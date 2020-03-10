@@ -10,13 +10,16 @@ import networkx as nx
 
 
 class TensorNetwork:
-    """
-    Tensor Network class. 
+    """Tensor Network class. 
+    
+    This class must satisfy some invariants:
+        self.unused >= 0
+        self.unused > key for all keys in edges 
+        keys >= 0
 
-    Some invariants:
-      * self.unused >= 0
-      * self.unused > key for all keys in edges 
-      * keys >= 0
+    Attributes:
+        graph (nx.Graph): Underlying (multi)graph for the tensor network.
+        unused (int): Number of edges. Used for accounting.
     """
 
     graph: nx.Graph
@@ -34,6 +37,16 @@ class TensorNetwork:
 
     @staticmethod
     def _relabel_data(relabel, data):
+        """Internal function to relabel the data inside an edge.
+
+        Args:
+            relabel (function): Function that takes a value and returns a value, to rename things.
+            data (dict): Data to be relabeled.
+
+        Returns:
+            dict: Relabelled axes
+
+        """
         axes = data['axes']
         if isinstance(axes, dict):
             axes = {relabel(k): v for k, v in axes.items()}
@@ -41,8 +54,15 @@ class TensorNetwork:
 
     def copy(self, shift=0, relabel=None):
         """
-        Copies the tensor network. 
+        Copies the tensor network.
         It relabels the nodes and shifts the keys of the edges.
+
+        Args:
+            shift (int): By how many edges should this be shifted.
+            relabel (function, Optional): Function to relabel the nodes.
+        
+        Returns:
+            TensorNetwork: New instance of tensor network with the same structure.
         """
         if relabel is None:
             relabel = lambda x: x
@@ -69,6 +89,18 @@ class TensorNetwork:
         so that we can (if desired) guarantee that the union is disjoint.
 
         In case of clashes, left takes priority.
+
+        Args:
+            left (TensorNetwork): One of the TN to merge
+            right (TensorNetwork): One of the TN to merge
+            left_relabel (function, Optional): Function to relabel the values. 
+                Useful when merging the same TN.
+            right_relabel (function, Optional): Function to relabel the values. 
+                Useful when merging the same TN.
+
+        Returns:
+            TensorNetwork: TensorNetwork resulting from merging both networks.
+            
         """
         if left_relabel is None:
             left_relabel = lambda x: x
@@ -103,12 +135,19 @@ class TensorNetwork:
         """
         Adds a single node to the tensor network.
         
+        Args:
+            name (hashahble): Name for the node.
+            tensor (np.ndarray): The tensor inside node.
+        
         """
         self.graph.add_node(name, tensor=tensor)
 
     def new_key(self):
         """
         Outputs an unused key and inceases the unsued key counter.
+
+        Returns:
+            int: New integer, not used.
         """
         self.unused += 1
         return self.unused - 1
@@ -126,7 +165,15 @@ class TensorNetwork:
         and a right node with shape (3,5,7), 
         the only posibility is left_axis = 1 and right_axis = 0.
 
-        Throws an exception if the axis have different dimension.
+        Args:
+            left (hashable): One of the nodes connect.
+            left_axis (int): What dimension of the left tensor corresponds to the edge.
+            right (hashable): The other of the nodes connect.
+            right_axis (int): What dimension of the right tensor corresponds to the edge.
+
+        Raises:
+            ValueError: an exception if the axis have different dimension.
+
         """
         left_dim = self.graph.nodes[left]['tensor'].shape[left_axis]
         right_dim = self.graph.nodes[right]['tensor'].shape[right_axis]
@@ -154,6 +201,15 @@ class TensorNetwork:
 
         If no_merge_ok, this returns without changes or exceptions when 
         there are no edges.
+
+        Args:
+            left (hashable): One of the nodes connect.
+            right (hashable): One of the nodes connect.
+            key (int, optional): Which edge to contract between the two nodes. 
+                If not stated and there is only one edge, contratct that edge.
+            all_edges (bool): If it should merge all edges. Only works if key is not provided.
+            no_merge_ok (bool): Whether to throw an exception if nothing is merged.
+
         """
         n_edges = self.graph.number_of_edges(left, right)
         if n_edges == 0:
