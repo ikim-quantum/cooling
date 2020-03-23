@@ -425,4 +425,3 @@ class MPS:
             double: Norm of the MPS.
         """
         return np.sqrt(np.real(MPS.inner_product(self, self)))
-
