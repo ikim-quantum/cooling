@@ -48,13 +48,14 @@ class MPS:
     #cyclic MPS with the inner bond dimension being variable. it always
     #starts at |0>. this will keep the structure of the MPS roughly, but 
     #not quite, as described in the paper. the difference is, we do not 
-    #keep separate eigenvalue didagonal matrices between the tensors. 
+    #keep separate eigenvalue diagonal matrices between the tensors. 
     #instead, these are just absorbed into the tensors. 
     
     def __init__(self, n_qubits):
         #the list where we're going to keep the tensors
         self.nodes = []
         self.n_qubits = n_qubits
+        self.cyclic = True
         for i in range(n_qubits):
             n = np.array([1,0]).reshape((1,2,1))
             self.nodes.append(tn.Node(n, name = str(i)))
@@ -254,6 +255,34 @@ class MPS:
         N = delete_traces_no_complaint(N)
         
         return np.real(N.tensor)
+
+    def get_transfer_matrix(self):
+        
+        #gets the TF of the state represented by the MPS. 
+        #then it destroys the state. 
+
+        co_mps = self.copy(conjugate=True)
+        for i in range(self.n_qubits):
+            self.out_edge(i) ^ co_mps.out_edge(i)
+        
+        edgesA = self.left_edges(0) # should be 1
+        edgesB = co_mps.left_edges(0) # should be 1
+
+        for e in (edgesA + edgesB):
+            e.disconnect()
+
+        left = list(self.nodes[0].get_all_dangling()) + list(co_mps.nodes[0].get_all_dangling())
+        right = list(self.nodes[-1].get_all_dangling()) + list(co_mps.nodes[-1].get_all_dangling())
+        
+        N = self.nodes[0] @ co_mps.nodes[0]
+        
+        for i in range(1, self.n_qubits):
+            N = N @ self.nodes[i]
+            N = N @ co_mps.nodes[i]
+        
+        # N = delete_traces_no_complaint(N)
+
+        return N, left, right
     
     def probability_zero_at_sites(self, sites):
         
@@ -348,11 +377,15 @@ def random_unitary_gate(n_qubits):
     
     return unitary_group.rvs(2**n_qubits)
 
-def mk_ladder(n_qubits):
+def mk_ladder(n_qubits, all_same = True):
     
     #returns a ladder of random gates
-    
-    return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)]
+
+    if all_same:
+        gate = random_unitary_gate(2)
+        return [([i, i + 1], gate) for i in range(n_qubits - 1)]
+    else:
+        return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)]
 
 def reverse_ladder(circuit):
     
@@ -363,23 +396,23 @@ def reverse_ladder(circuit):
         rev_circuit.append((pos, np.array(np.matrix(gate).H)))
     return rev_circuit
 
-def sample_ladder(n_qubits):
+def sample_ladder(n_qubits, all_same = True):
     
     #samples the circuit we need to simulate the proposed method
     
-    circuit = mk_ladder(n_qubits)
+    circuit = mk_ladder(n_qubits, all_same = all_same)
     rev_circuit = reverse_ladder(circuit[:-1])
     total_circuit = circuit + rev_circuit
     return total_circuit
     
-def sample_process(n_qubits):
+def sample_process(n_qubits, all_same = True):
     
     #takes the above and simulates it with an MPS
     
-    total_circuit = sample_ladder(n_qubits)
+    total_circuit = sample_ladder(n_qubits, all_same = all_same)
     return compute_mps(n_qubits, total_circuit).zero_overlap()
 
-def get_all_probabilities(m):
+def get_all_probabilities(m, all_same = True):
     
     #for an MPS, we compute the probability 
     #that its state will collapse to 0 after measuring.
@@ -500,12 +533,12 @@ def sample_all_qubits(n_qubits):
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities(m)
 
-def sample_all_qubits_faster(n_qubits):
+def sample_all_qubits_faster(n_qubits, all_same = True):
     
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities, but faster. 
     
-    circuit = sample_ladder(n_qubits)
+    circuit = sample_ladder(n_qubits, all_same = all_same)
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities_faster(m.copy())
 
