@@ -418,9 +418,8 @@ def get_all_probabilities(m, all_same = True):
     #that its state will collapse to 0 after measuring.
     
     #the complexity of this is quadratic. 
-    
-    circuit = sample_ladder(n_qubits)
-    m = compute_mps(n_qubits, circuit)
+
+    n_qubits = m.n_qubits
     probs = []
     for i in range(n_qubits):
         p = m.copy().probability_zero_at_sites([i])
