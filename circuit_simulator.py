@@ -12,13 +12,6 @@ from scipy.stats import unitary_group
 from pandas.core.common import flatten
 from typing import Any, Tuple, List
 
-# Tensor for SWAP gate
-swap = np.zeros((2,2,2,2))
-swap[0,0,0,0] = 1
-swap[1,1,1,1] = 1
-swap[0,1,1,0] = 1
-swap[1,0,0,1] = 1
-
 # Tensors for single-qubit Paulis
 Id = np.eye(2)
 sx = np.array([[0,1.],[1,0]])
@@ -77,7 +70,14 @@ class MPS:
 
     Attrs:
         n_qubits(int): Number of qubits in the chain.
-        nodes(list): A list of nodes.
+        nodes(list): A list of nodes. Each node has three types 
+                     of edges. 
+                     1) Out edge: The edge(s) representing the 
+                                  physical qubits.
+                     2) Left edge: Internal edge. Connected to the 
+                                   right edge of the left node.
+                     3) Right edge: Internal edge. Connected to
+                                    the left edge of the right node.
         cyclic(bool): True if the boundary condition is periodic.
                       False otherwise.
     """
@@ -99,36 +99,64 @@ class MPS:
             self.nodes[i][2] ^ self.nodes[j][0]
     
     def out_edge(self, i):
-        #for the i-th tensor, this returns the dangling edge
+        """
+        Args:
+            i(int): Index of the node.
+
+        Returns:
+            list: list of out edges of the i'th node.
+        """
         return list(tn.get_all_dangling([self.nodes[i]]))[0]
     
     def left_edges(self, i):
-        #returns the edge to the left
+        """
+        Args:
+            i(int): Index of the node.
+
+        Returns:
+            list: list of left edges of the i'th node.
+        """
         ip = (i + self.n_qubits - 1) % self.n_qubits
         return list(tn.get_shared_edges(self.nodes[i], self.nodes[ip]))
     
     def right_edges(self, j):
-        #returns the edge to the right
+        """
+        Args:
+            i(int): Index of the node.
+
+        Returns:
+            list: list of right edges of the i'th node.
+        """
         jn = (j + 1) % self.n_qubits
         return list(tn.get_shared_edges(self.nodes[j], self.nodes[jn]))
             
     def apply_one_site_gate(self, i, gate):
-        #applies one gate operation to a qubit
+        """
+        Applies a single-qubit gate to the i'th qubit. The gate 
+        has to be a 2x2 matrix.
+
+        Args:
+            i(int): Index of the qubit.
+            gate(np.array): 2x2 matrix.
+        """
         assert gate.shape == (2,2)
         gate = tn.Node(gate)
         gate[0] ^ self.out_edge(i)
         self.nodes[i] = self.nodes[i] @ gate
         
     def apply_consecutive_gates(self, i, gate):
+        """
+        Applies a two-qubit gate to the i'th and the (i+1)'th qubit. 
+        The gate must be either a 4x4 matrix or a 2x2x2x2 tensor.
         
-        #place a 2-gate operation on the i-th and i+1-st tensor. 
-        #it essentially contracts the gate and the two tensors at
-        #those positions and does an SVD decomposition. when doing
-        #the SVD decomposition, we only take the top 4 r vectors, 
-        #where r was the bond dimension between i and i+1, since
-        #per the paper, the inner dimensionality would increase at
-        #most by a factor of 4. 
-        
+        Comment: In tn.split_node, it may make sense to use max_truncation_err
+                 option instead of max_singular_values option, in case there
+                 was a mistake in my note.
+
+        Args:
+            i(int): Index of the qubit.
+            gate(np.array): 4x4 matrix or 2x2x2x2 tensor.
+        """
         gate = normalize_gate(gate)
         j = (i + 1) % self.n_qubits
         
@@ -141,16 +169,13 @@ class MPS:
         self.out_edge(i) ^ gate[0]
         self.out_edge(j) ^ gate[1]
         
-        
         # Get non-dangling edges for each side
         left_edges = self.left_edges(i) + [gate[2]]
         right_edges = self.right_edges(j) + [gate[3]]
         
-        
         # Contract edges
         C = (self.nodes[i] @ self.nodes[j])
         D = C @ gate
-
 
         self.nodes[i], self.nodes[j], _ = tn.split_node(D, 
                                                      left_edges = left_edges, 
@@ -158,9 +183,14 @@ class MPS:
                                                      max_singular_values = 4*r, 
                                                      left_name = str(i), 
                                                      right_name = str(j))
-    
+
     def apply_swap(self, i):
-        #applies swap to i and i+1
+        """
+        SWAP the i'th qubit with the (i+1)'th qubit.
+
+        Args:
+            int(i): Qubit index.
+        """
         swap = np.array([[[[1., 0.],
                  [0., 0.]],
                 [[0., 0.],
