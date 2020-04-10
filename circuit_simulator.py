@@ -8,6 +8,7 @@
 
 import tensornetwork as tn
 import numpy as np
+import warnings
 from scipy.stats import unitary_group
 from pandas.core.common import flatten
 from typing import Any, Tuple, List
@@ -197,12 +198,13 @@ class MPS:
         self.apply_consecutive_gates(i, swap)
         
     def apply_two_site_gate(self, i, j, gate):
+        """
+        Apply a two-qubit gate between i and j.
         
-        #with a combination of swap gates, and the gate we
-        #intend to apply, we decompose an operation on non-
-        #consecutive gates as a series of operations on 
-        #consecutive gates.
-        
+        Args:
+            i,j(int): Index of the qubits
+            gate(np.array): 4x4 or 2x2x2x2 matrix.
+        """
         gate = normalize_gate(gate)
         assert i != j
         
@@ -231,18 +233,19 @@ class MPS:
                 self.apply_consecutive_gates(t)        
         
     def zero_overlap(self):
-        
-        #this operation destroys the state, i.e. you cannot
-        #use the MPS after applying this. then this returns
-        #the overlap between the state represented by the MPS
-        #and |0>. 
-        
-        #the complexity of this is n*(D^2) where D is the
-        #maximum inner bond dimension, because the biggest
-        #contraction we do has a multiplication by D^2. 
-        
-        #note that in our case, D is constant, so this is just n. 
-        
+        """
+        Computes the overlap between the MPS and all-0 state.
+        Note that this is an amplitude, not amplitude squared.
+        Also, this method destroys the MPS, so be careful in
+        using it.
+
+        Complexity of this operation is O(nD^2), where D is the
+        maximum inner(left/right) bond dimension and n is the
+        number of qubits.
+
+        Returns:
+            float: overlap between self and |0...0>.
+        """
         for i in range(self.n_qubits):
             m = tn.Node(np.array([1,0]))
             self.out_edge(i) ^ m[0]
@@ -251,20 +254,28 @@ class MPS:
         single = self.nodes[0]
         for n in self.nodes[1:]:
             single = single @ n
-        
-        # Destroy the MPS
+
         self.nodes = None
         
         return single.tensor
     
     def reduce_at_sites(self, sites, values = None):
+        """
+        Contracts MPS with |0> on the given sites. This
+        reduces the MPS to a smaller MPS.
         
-        #this applies the |0> to dangling edges provided, 
-        #and reduces the MPS to a smaller MPS
-        
-        #the complexity of this is number of sites*D^2, 
-        #where D is still the maximum inner bond dimension. 
-        
+        The complexity of this method is O(len(sites)*D^2),
+        where D is the maximum inner(left/right) bond 
+        dimension.
+
+        Args:
+            sites(list): List of sites.
+            values(list): Optional list, which stores the
+                          value of the bit we want impose.
+                          For instance, [0,1,0] would contract
+                          the MPS with the state |010>. 
+                          Default values of the list are 0.
+        """
         if values is None:
             values = [0] * len(sites)
             
@@ -295,10 +306,12 @@ class MPS:
         return self
     
     def get_norm(self):
-        
-        #gets the norm of the state represented by the MPS. 
-        #then it destroys the state. 
-        
+        """
+        Gets the norm of the MPS.
+
+        Returns:
+            float: norm of the MPS.
+        """
         co_mps = self.copy(conjugate=True)
         for i in range(self.n_qubits):
             self.out_edge(i) ^ co_mps.out_edge(i)
@@ -314,10 +327,14 @@ class MPS:
         return np.real(N.tensor)
 
     def get_transfer_matrix(self):
-        
-        #gets the TF of the state represented by the MPS. 
-        #then it destroys the state. 
+        """
+        Obtain the transfer matrix defined with
+        respect to the first node.
 
+        Comment: Not sure what's going on here. Need
+                 to check later.
+        """
+        warnings.warn("Need to check this method.", Warning)
         co_mps = self.copy(conjugate=True)
         for i in range(self.n_qubits):
             self.out_edge(i) ^ co_mps.out_edge(i)
@@ -342,19 +359,25 @@ class MPS:
         return N, left, right
     
     def probability_zero_at_sites(self, sites):
-        
-        #gives the probability that when we measure, 
-        #the specififed sites are 0. 
-        
+        """
+        Args:
+            sites(list): A list of qubits
+
+        Returns:
+            float: Probability that all the qubits in
+                   sites is 0.
+        """
         self.reduce_at_sites(sites)
         return self.get_norm()
     
     def get_full_state(self):
-        
-        #collapses the whole MPS and gets the 2^n dimensional 
-        #state. obviously very expensive and should only be 
-        #used for testing purposes. 
-        
+        """
+        Collapses the whole MPS and gets the 2^n-dimensional
+         state. Only for testing purposes.
+
+        Returns:
+            MPS: Post-collapse state.
+        """
         N = self.nodes[0]
         for i in range(1, self.n_qubits):
             N = N @ self.nodes[i]
@@ -362,26 +385,30 @@ class MPS:
         self.nodes = None
         return N.tensor
     
-    def rotate(self, shift):
-        
-        #since we're working with a cycles, we can rotate the MPS. 
-        #this operation moves the tensor #(shift) into the position 0, 
-        #that is, it rotates the MPS #(shift) places backwards. 
-        
+    def shift_self(self, shift):
+        """
+        Shifts the MPS by shift.
+
+        Args:
+            shift(int): shift unit
+        """
         self.nodes = self.nodes[shift:] + self.nodes[:shift]
         return self
         
-    def reverse(self):
-        #flips the MPS order
+    def reverse_self(self):
+        """
+        Flips the MPS order.
+        """
         self.nodes = self.nodes[::-1]
         return self
     
     def copy(self, conjugate = False):
-        
-        #copies the whole MPS state and returns a new instance of
-        #the same MPS with the same information. this is useful because
-        #we have operations that destroy the state. 
-        
+        """
+        Copies the whole MPS.
+
+        Returns:
+            MPS: A deep copy of self.
+        """
         node_dict, _ = tn.copy(self.nodes, conjugate = conjugate)
         mps_copy = MPS(0)
         mps_copy.n_qubits = self.n_qubits
@@ -570,8 +597,8 @@ def get_probabilities_helper(N, mps, co_mps):
     N = advance_merging_mps(N, mps, co_mps, m)
     first_probs = get_probabilities_helper(N, mps, co_mps)
     
-    mps2.reverse().rotate(-1)
-    co_mps2.reverse().rotate(-1)
+    mps2.reverse_self().shift_self(-1)
+    co_mps2.reverse_self().shift_self(-1)
     
     N2 = advance_merging_mps(N2, mps2, co_mps2, n_qubits - 1 - m)
     second_probs = get_probabilities_helper(N2, mps2, co_mps2)
