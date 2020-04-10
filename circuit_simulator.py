@@ -1,43 +1,64 @@
+###############################################
+# Efficient simulation of algorithmic cooling #
+# for noise-resilient circuits                #
+# MIT License                                 #
+# Galit Anikeeva and Isaac H. Kim             #
+# Last update: 4/10/2020                      #
+###############################################
+
 import tensornetwork as tn
-
-#instead of using the tensor network class 
-#that was shown a couple weeks ago, 
-#I figured something that already exists 
-#would be faster, so using this going forward
-
-from scipy.stats import unitary_group
-
 import numpy as np
-
+from scipy.stats import unitary_group
 from pandas.core.common import flatten
-
 from typing import Any, Tuple, List
 
-swap = np.zeros((2,2,2,2)) #tensor for swap gate
+# Tensor for SWAP gate
+swap = np.zeros((2,2,2,2))
 swap[0,0,0,0] = 1
 swap[1,1,1,1] = 1
 swap[0,1,1,0] = 1
 swap[1,0,0,1] = 1
 
+# Tensors for single-qubit Paulis
 Id = np.eye(2)
 sx = np.array([[0,1.],[1,0]])
 sy = np.array([[1,0.],[0,-1]])
 sz = np.array([[0,-1j],[1j,0]])
 
+
 def normalize_gate(gate):
-    
-    #transforms a unitary matrix in a 4x4 shape into a rank 4 tensor
-    
+    """
+    Transforms a 4x4 unitary matrix into a 2x2x2x2 tensor.
+
+    Comment: It will be good to verify that gate is indeed
+             unitary.
+
+    Args:
+        gate(np.array): 4x4 matrix or a 2x2x2x2 tensor.
+
+    Returns:
+        np.array: 2x2x2x2 tensor
+    """
     assert gate.shape == (4,4) or gate.shape == (2,2,2,2)
     if gate.shape == (4,4):
         return gate.T.reshape(2,2,2,2)
     else:
         return gate
 
+    
 def delete_traces_no_complaint(N):
-    
-    #constracts all self-edges in the node. 
-    
+    """
+    Contracts all the edges that begin and end on the same
+    node. (Let's call them as "internal" edges.)
+
+    Args:
+        N(tensornetwork.Node): Tensornetwork Node
+
+    Returns:
+        N(tensornetwork.Node): The same node, but after
+                               contracting all the internal
+                               edges.
+    """
     has_trace_edges = False
     for edge in N.edges:
         if edge.is_trace():
@@ -48,25 +69,32 @@ def delete_traces_no_complaint(N):
         N = tn.contract_trace_edges(N)
     return N
 
+
 class MPS:
-    
-    #cyclic MPS with the inner bond dimension being variable. it always
-    #starts at |0>. this will keep the structure of the MPS roughly, but 
-    #not quite, as described in the paper. the difference is, we do not 
-    #keep separate eigenvalue diagonal matrices between the tensors. 
-    #instead, these are just absorbed into the tensors. 
-    
+    """
+    Matrix Product State(MPS) with periodic/cyclic boundary 
+    condition. The physical degrees of freedoms are qubits.
+
+    Attrs:
+        n_qubits(int): Number of qubits in the chain.
+        nodes(list): A list of nodes.
+        cyclic(bool): True if the boundary condition is periodic.
+                      False otherwise.
+    """
     def __init__(self, n_qubits):
-        #the list where we're going to keep the tensors
-        self.nodes = []
         self.n_qubits = n_qubits
+        self.nodes = []
         self.cyclic = True
+
+        # Initialize each node.
         for i in range(n_qubits):
             n = np.array([1,0]).reshape((1,2,1))
             self.nodes.append(tn.Node(n, name = str(i)))
-        
+
+        # Connect each nodes to each other.
+        # Combined with the initial condition for each nodes,
+        # we obtain a |0...0> state.
         for i in range(n_qubits):
-            #here we connect the tensors
             j = (i + 1) % n_qubits
             self.nodes[i][2] ^ self.nodes[j][0]
     
