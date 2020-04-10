@@ -634,14 +634,23 @@ def sample_all_qubits(n_qubits):
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities(m)
 
-def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = None):
+def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = None, times = None):
     
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities, but faster. 
+    if times is None:
+        times = 1
+    
+    # ps.mean(axis=0)
     
     circuit = sample_ladder(n_qubits, all_same = all_same)
-    m = compute_mps(n_qubits, circuit, depolarizing_noise = depolarizing_noise)
-    return get_all_probabilities_faster(m.copy())
+    ps = []
+    for _ in range(times):
+        m = compute_mps(n_qubits, circuit, depolarizing_noise = depolarizing_noise)
+        ps.append(get_all_probabilities_faster(m.copy()))
+    
+    ps = np.mean(ps, axis = 0)
+    return ps
 
 def sample_all_qubits_faster_polarized(n_qubits, p = 0.,all_same = True):
     
