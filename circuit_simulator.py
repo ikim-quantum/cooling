@@ -19,6 +19,11 @@ swap[1,1,1,1] = 1
 swap[0,1,1,0] = 1
 swap[1,0,0,1] = 1
 
+Id = np.eye(2)
+sx = np.array([[0,1.],[1,0]])
+sy = np.array([[1,0.],[0,-1]])
+sz = np.array([[0,-1j],[1j,0]])
+
 def normalize_gate(gate):
     
     #transforms a unitary matrix in a 4x4 shape into a rank 4 tensor
@@ -356,8 +361,11 @@ def reduce_circuit(circuit: List[Tuple[List[int], np.ndarray]]):
 
     return new_circuit
 
-def compute_mps(n_qubits, circuit):
-    
+
+
+depolarizing_gates = []
+
+def compute_mps(n_qubits, circuit, depolarizing_noise = None):
     #given a circuit, it simulates the circuit by
     #applying the gates of the circuit. 
     
@@ -369,6 +377,14 @@ def compute_mps(n_qubits, circuit):
             m.apply_one_site_gate(pos[0], gate)
         else:
             m.apply_two_site_gate(pos[0], pos[1], gate)
+        
+        if depolarizing_noise is not None:
+            for p in pos:
+                noise_gate = np.random.choice([None, sx, sy, sz], p = [1 - 3*depolarizing_noise/4, depolarizing_noise/4, depolarizing_noise/4, depolarizing_noise/4])
+                if noise_gate is None:
+                    continue
+                m.apply_one_site_gate(p, noise_gate)
+
     return m
 
 def random_unitary_gate(n_qubits):
@@ -532,7 +548,16 @@ def sample_all_qubits(n_qubits):
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities(m)
 
-def sample_all_qubits_faster(n_qubits, all_same = True):
+def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = None):
+    
+    #samples the ladder, computes the MPS, 
+    #and gets all the probabilities, but faster. 
+    
+    circuit = sample_ladder(n_qubits, all_same = all_same)
+    m = compute_mps(n_qubits, circuit, depolarizing_noise = depolarizing_noise)
+    return get_all_probabilities_faster(m.copy())
+
+def sample_all_qubits_faster_polarized(n_qubits, p = 0.,all_same = True):
     
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities, but faster. 
