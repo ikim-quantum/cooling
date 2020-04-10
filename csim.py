@@ -11,94 +11,149 @@ import tensornetwork as tn
 import numpy as np
 import warnings
 from scipy.stats import unitary_group
-from typing import Any, List
+from typing import Any, Tuple, List
 from mps import MPS, delete_traces_no_complaint
 
 
+def compute_mps(n_qubits, circuit, p_noise = None):
+    """
+    Given a circuit, it simulates the circuit by applying
+    the gates of the circuit. The global state is initialized
+    to |0...0>.
 
-def compute_mps(n_qubits, circuit, depolarizing_noise = None):
-    #given a circuit, it simulates the circuit by
-    #applying the gates of the circuit.
-
+    Args:
+        n_qubits(int): Number of qubits in the chain.
+        circuit(list): A list of tuples, which are composed of
+                       a list and np.ndarray.
+        p_noise: Noise strength
+    
+    Returns:
+        m(MPS): A MPS created after applying the circuit, with
+                (potentially) randomized noise. In order to study
+                the effect of noise reliably, one has to sample
+                over many MPSs.
+    """
     # Tensors for single-qubit Paulis
-    Id = np.eye(2)
     sx = np.array([[0,1.],[1,0]])
     sy = np.array([[1,0.],[0,-1]])
     sz = np.array([[0,-1j],[1j,0]])
 
-    
-    red_circuit = reduce_circuit(circuit)
     m = MPS(n_qubits)
-    for pos, gate in red_circuit:
+    for pos, gate in circuit:
         assert (len(pos) in [1,2])
         if len(pos) == 1:
             m.apply_one_site_gate(pos[0], gate)
         else:
             m.apply_two_site_gate(pos[0], pos[1], gate)
         
-        if depolarizing_noise is not None:
+        if p_noise is not None:
             for p in pos:
-                noise_gate = np.random.choice([None, sx, sy, sz], p = [1 - 3*depolarizing_noise/4, depolarizing_noise/4, depolarizing_noise/4, depolarizing_noise/4])
+                noise_gate = np.random.choice([None, sx, sy, sz], p = [1 - 3*p_noise/4, p_noise/4, p_noise/4, p_noise/4])
                 if noise_gate is None:
                     continue
                 m.apply_one_site_gate(p, noise_gate)
-
     return m
 
+
 def random_unitary_gate(n_qubits):
-    
-    #returns a random unitary operating on n qubits
-    
+    """
+    Args:
+        n_qubits(int): Number of qubits
+
+    Returns:
+        np.ndarray: A random unitary acting on n qubits, in a matrix form.
+    """
     return unitary_group.rvs(2**n_qubits)
 
-def mk_ladder(n_qubits, all_same = True):
-    
-    #returns a ladder of random gates
 
+def mk_ladder(n_qubits, all_same = True):
+    """
+    Args:
+        n_qubits(int): Number of qubits
+        all_same(bool): If True, choose all the gates to be equal.
+                        False otherwise.
+    Returns:
+        List: A list of random gates in a ladder-like form.
+    """
     if all_same:
         gate = random_unitary_gate(2)
         return [([i, i + 1], gate) for i in range(n_qubits - 1)]
     else:
         return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)]
 
-def reverse_ladder(circuit):
-    
-    #reverses a circuit
-    
-    rev_circuit = []
+
+def invert_circuit(circuit):
+    """
+    Returns the inverse circuit.
+
+    Args:
+        circuit(List): A circuit
+
+    Returns:
+        List: The inverse circuit.
+    """
+    circuit_inv = []
     for pos, gate in circuit[::-1]:
-        rev_circuit.append((pos, np.array(np.matrix(gate).H)))
-    return rev_circuit
+        circuit_inv.append((pos, np.array(np.matrix(gate).H)))
+    return circuit_inv
+
 
 def sample_ladder(n_qubits, all_same = True):
-    
-    #samples the circuit we need to simulate the proposed method
-    
+    """
+    Generate a random instance of a ladder-like circuit plus
+    the rewinding protocol.
+
+    Args:
+        n_qubits(int): Number of qubits
+        all_same(bool): If True, set all the gates to be identical.
+                        If False, sample each gates independently.
+
+    Returns:
+        total_circuit(List): A ladder-like circuit concatenated
+                             with its rewinding.
+    """
     circuit = mk_ladder(n_qubits, all_same = all_same)
-    rev_circuit = reverse_ladder(circuit[:-1])
+    rev_circuit = invert_circuit(circuit[:-1])
     total_circuit = circuit + rev_circuit
     return total_circuit
-    
+
+
 def sample_process(n_qubits, all_same = True):
-    
-    #takes the above and simulates it with an MPS
-    
+    """
+    Apply a rewinding protocol to a random ladder-like circuit
+    and estimate the overlap with the all-0 state.
+
+    Args:
+        n_qubits(int): Number of qubits
+        all_same(bool): If True, set all the gates to be identical.
+                        If False, sample each gates independently.
+
+    Returns:
+        float: overlap with the |0...0> state.
+    """
     total_circuit = sample_ladder(n_qubits, all_same = all_same)
     return compute_mps(n_qubits, total_circuit).zero_overlap()
 
-def get_all_probabilities(m, all_same = True):
-    
-    #for an MPS, we compute the probability 
-    #that its state will collapse to 0 after measuring.
-    
-    #the complexity of this is quadratic. 
 
+def get_all_probabilities(m, all_same = True):
+    """
+    For a MPS m, compute the fidelity between the reduced density
+    matrix of the i'th site with the |0> state for all i.
+
+    Args:
+        m(MPS):
+
+    Returns:
+        List(float): A list of overlap between reduced density
+                     matrices and |0>.
+    """
     n_qubits = m.n_qubits
     probs = []
     for i in range(n_qubits):
         p = m.copy().probability_zero_at_sites([i])
         probs.append(np.real(p))
     return probs
+
 
 def advance_merging_mps(N, mps, co_mps, m):
     
@@ -273,7 +328,7 @@ def sample_better_ladder(n_lines: int, D: int) -> List[List[Any]]:
 def sample_better_process(n_lines:int, D: int):
     circuit = sample_better_ladder(n_lines, D)
     except_last_part = list(sum(circuit[:-1], []))
-    reversing = reverse_ladder(except_last_part)
+    reversing = invert_circuit(except_last_part)
     circuit = list(sum(circuit,[])) + reversing
     return circuit
 
