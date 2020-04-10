@@ -171,7 +171,6 @@ def advance_merging_mps(N, mps, co_mps, m):
     return N
 
 def copy_mps_co_mps(N, mps, co_mps):
-    
     #for an MPS and its conjugate that are joined at the 0-th site, 
     #it takes the combined structure and copies it. 
     
