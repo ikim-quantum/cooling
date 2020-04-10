@@ -12,12 +12,6 @@ from scipy.stats import unitary_group
 from pandas.core.common import flatten
 from typing import Any, Tuple, List
 
-# Tensors for single-qubit Paulis
-Id = np.eye(2)
-sx = np.array([[0,1.],[1,0]])
-sy = np.array([[1,0.],[0,-1]])
-sz = np.array([[0,-1j],[1j,0]])
-
 
 def normalize_gate(gate):
     """
@@ -425,7 +419,14 @@ depolarizing_gates = []
 
 def compute_mps(n_qubits, circuit, depolarizing_noise = None):
     #given a circuit, it simulates the circuit by
-    #applying the gates of the circuit. 
+    #applying the gates of the circuit.
+
+    # Tensors for single-qubit Paulis
+    Id = np.eye(2)
+    sx = np.array([[0,1.],[1,0]])
+    sy = np.array([[1,0.],[0,-1]])
+    sz = np.array([[0,-1j],[1j,0]])
+
     
     red_circuit = reduce_circuit(circuit)
     m = MPS(n_qubits)
