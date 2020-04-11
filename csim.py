@@ -135,13 +135,13 @@ def sample_process(n_qubits, all_same = True):
     return compute_mps(n_qubits, total_circuit).zero_overlap()
 
 
-def get_all_probabilities(m, all_same = True):
+def get_all_probabilities(m):
     """
     For a MPS m, compute the fidelity between the reduced density
     matrix of the i'th site with the |0> state for all i.
 
     Args:
-        m(MPS):
+        m(MPS): MPS
 
     Returns:
         List(float): A list of overlap between reduced density
@@ -154,6 +154,46 @@ def get_all_probabilities(m, all_same = True):
         probs.append(np.real(p))
     return probs
 
+
+def get_correlation(m, i, j):
+    """
+    For a MPS m, compute the Pearson correlation coefficient
+    between qubit i and qubit j.
+
+    Args:
+        m(MPS): MPS
+        i, j(int): Qubit indices
+
+    Returns:
+        float: Pearson correlation coefficient
+    """
+    # Probability of being in the 1 state for i and j.
+    pi = 1-m.copy().probability_zero_at_sites([i])
+    pj = 1-m.copy().probability_zero_at_sites([j])
+    std_i = np.sqrt(pi * (1-pi))
+    std_j = np.sqrt(pj * (1-pj))
+
+    m_temp = m.copy()
+    m_temp.reduce_at_sites([i,j], [1,1])
+    cor = m_temp.get_norm() - pi*pj
+    return cor/(std_i * std_j)
+
+
+def sample_correlation(n_q, i, j, n_samples):
+    """
+    Samples correlation values.
+
+    Args:
+        n_q(int): Number of qubits
+        i,j(int): Qubit indices
+        n_samples(int): Number of samples
+
+    Returns:
+        list(float): Samples for Pearson correlation coefficients.
+    """
+    out = [get_correlation(compute_mps(n_q, sample_ladder(n_q)), i, j) for k in range(n_samples)]
+    return out
+    
 
 def advance_merging_mps(N, mps, co_mps, m):
     
