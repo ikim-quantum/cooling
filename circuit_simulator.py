@@ -12,6 +12,8 @@ import warnings
 from scipy.stats import unitary_group
 from pandas.core.common import flatten
 from typing import Any, Tuple, List
+import numba
+# @numba.jit(nopython=True, parallel=True)
 
 
 def normalize_gate(gate):
