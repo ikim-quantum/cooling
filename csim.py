@@ -193,7 +193,24 @@ def sample_correlation(n_q, i, j, n_samples):
     """
     out = [get_correlation(compute_mps(n_q, sample_ladder(n_q)), i, j) for k in range(n_samples)]
     return out
-    
+
+
+def correlated_flip_probability(n_q, k):
+    """
+    Generate a random MPS of length n_q and compute the probability that
+    the first k qubits are in the |1> state.
+
+    Args:
+        n_q(int): Number of qubits
+        k(int): First k qubits
+
+    Returns:
+        float: Probability that the first k bits are flipped.
+    """
+    mps_rand = compute_mps(n_q, sample_ladder(n_q))
+    mps_rand.reduce_at_sites([i for i in range(k)], [1]*k)
+    return mps_rand.get_norm()
+
 
 def advance_merging_mps(N, mps, co_mps, m):
     
