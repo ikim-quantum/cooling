@@ -11,6 +11,7 @@ import tensornetwork as tn
 import numpy as np
 import warnings
 from scipy.stats import unitary_group
+import scipy.linalg as la
 from typing import Any, Tuple, List
 from mps import MPS, delete_traces_no_complaint
 
@@ -66,6 +67,40 @@ def random_unitary_gate(n_qubits):
     return unitary_group.rvs(2**n_qubits)
 
 
+def apply_channel(u, o):
+    v = np.kron(np.array([1,0]), np.eye(2))
+    return v @ u.T.conjugate() @ np.kron(np.eye(2),o) @ u @ v.T
+
+
+def transfer_matrix(u):
+    """
+    Map a 2x2 matrix O to 
+    (<0| \otimes I)U(I \otimes O)U^{\dagger}(I\otimes |0>)
+    Args:
+        u(np.ndarray): 4x4 unitary matrix
+
+    Returns:
+        np.ndarray: Transfer matrix
+    """
+    # We will do the dumb thing and just compute each of the matrix entries.
+    o00 = np.array([[1,0],[0,0]])
+    o10 = np.array([[0,0],[1,0]])
+    o01 = np.array([[0,1],[0,0]])
+    o11 = np.array([[0,0],[0,1]])
+
+    op00 = apply_channel(u,o00)
+    op10 = apply_channel(u,o10)
+    op01 = apply_channel(u,o01)
+    op11 = apply_channel(u,o11)
+
+    transfer = [[op00[0,0], op10[0,0], op01[0,0], op11[0,0]],
+                [op00[1,0], op10[1,0], op01[1,0], op11[1,0]],
+                [op00[0,1], op10[0,1], op01[0,1], op11[0,1]],
+                [op00[1,1], op10[1,1], op01[1,1], op11[1,1]]]
+
+    return np.array(transfer)
+
+
 def mk_ladder(n_qubits, all_same = True):
     """
     Args:
@@ -77,9 +112,16 @@ def mk_ladder(n_qubits, all_same = True):
     """
     if all_same:
         gate = random_unitary_gate(2)
-        return [([i, i + 1], gate) for i in range(n_qubits - 1)]
+        tm = transfer_matrix(gate)
+        ev, junk = la.eig(tm)
+        ev_abs = abs(ev)
+        ev_abs.sort()
+        lambda1 = ev_abs[-2]
+        c_length = -(1/np.log(lambda1))
+        # print(c_length)
+        return [([i, i + 1], gate) for i in range(n_qubits - 1)], c_length
     else:
-        return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)]
+        return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)], 0
 
 
 def invert_circuit(circuit):
@@ -112,10 +154,10 @@ def sample_ladder(n_qubits, all_same = True):
         total_circuit(List): A ladder-like circuit concatenated
                              with its rewinding.
     """
-    circuit = mk_ladder(n_qubits, all_same = all_same)
+    circuit, c_length = mk_ladder(n_qubits, all_same = all_same)
     rev_circuit = invert_circuit(circuit[:-1])
     total_circuit = circuit + rev_circuit
-    return total_circuit
+    return total_circuit, c_length
 
 
 def sample_process(n_qubits, all_same = True):
@@ -131,7 +173,7 @@ def sample_process(n_qubits, all_same = True):
     Returns:
         float: overlap with the |0...0> state.
     """
-    total_circuit = sample_ladder(n_qubits, all_same = all_same)
+    total_circuit, c_length = sample_ladder(n_qubits, all_same = all_same)
     return compute_mps(n_qubits, total_circuit).zero_overlap()
 
 
@@ -191,7 +233,8 @@ def sample_correlation(n_q, i, j, n_samples):
     Returns:
         list(float): Samples for Pearson correlation coefficients.
     """
-    out = [get_correlation(compute_mps(n_q, sample_ladder(n_q)), i, j) for k in range(n_samples)]
+    sam, c_length = sample_ladder(n_q)
+    out = [get_correlation(compute_mps(n_q, sam), i, j) for k in range(n_samples)]
     return out
 
 
@@ -207,7 +250,8 @@ def correlated_flip_probability(n_q, k):
     Returns:
         float: Probability that the first k bits are flipped.
     """
-    mps_rand = compute_mps(n_q, sample_ladder(n_q))
+    sam, c_length = sample_ladder(n_q)
+    mps_rand = compute_mps(n_q, sam)
     mps_rand.reduce_at_sites([i for i in range(k)], [1]*k)
     return mps_rand.get_norm()
 
@@ -313,7 +357,7 @@ def sample_all_qubits(n_qubits):
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities
     
-    circuit = sample_ladder(n_qubits)
+    circuit, c_length = sample_ladder(n_qubits)
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities(m)
 
@@ -326,7 +370,7 @@ def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = Non
     
     # ps.mean(axis=0)
     
-    circuit = sample_ladder(n_qubits, all_same = all_same)
+    circuit, c_length = sample_ladder(n_qubits, all_same = all_same)
     ps = []
     for _ in range(times):
         m = compute_mps(n_qubits, circuit, p_noise = depolarizing_noise)
@@ -340,7 +384,7 @@ def sample_all_qubits_faster_polarized(n_qubits, p = 0.,all_same = True):
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities, but faster. 
     
-    circuit = sample_ladder(n_qubits, all_same = all_same)
+    circuit, c_length = sample_ladder(n_qubits, all_same = all_same)
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities_faster(m.copy())
 
@@ -349,7 +393,7 @@ def sample_top_k(n_qubits, k = 3):
     #the probability of getting 0,0,0 in the first qubits,
     #that is, the furthest ones from the edge of the ladder
     
-    circuit = sample_ladder(n_qubits)
+    circuit, c_length = sample_ladder(n_qubits)
     m = compute_mps(n_qubits, circuit)
     return m.probability_zero_at_sites(list(range(k)))
 
