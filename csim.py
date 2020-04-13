@@ -75,7 +75,7 @@ def apply_channel(u, o):
 def transfer_matrix(u):
     """
     Map a 2x2 matrix O to 
-    (<0| \otimes I)U(I \otimes O)U^{\dagger}(I\otimes |0>)
+    (<0| \otimes I)U^{\dagger}(I \otimes O)U(I\otimes |0>)
     Args:
         u(np.ndarray): 4x4 unitary matrix
 
