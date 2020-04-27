@@ -14,7 +14,7 @@ from scipy.stats import unitary_group
 import scipy.linalg as la
 from typing import Any, Tuple, List
 from mps import MPS, delete_traces_no_complaint
-
+from functools import partial
 
 def compute_mps(n_qubits, circuit, p_noise = None):
     """
@@ -99,6 +99,28 @@ def transfer_matrix(u):
                 [op00[1,1], op10[1,1], op01[1,1], op11[1,1]]]
 
     return np.array(transfer)
+
+def matrix_to_choi(u):
+    """
+    Map a 2x2 matrix O to 
+    (<0| \otimes I)U^{\dagger}(I \otimes O)U(I\otimes |0>)
+    then applies the choi isomorphism to the corresponding operator 
+
+    Args:
+        u(np.ndarray): 4x4 unitary matrix
+
+    Returns:
+        np.ndarray: 4x4 matrix matrix
+
+    """
+    total = np.zeros((4,4), dtype=np.complex128)
+    m_map = partial(apply_channel,u)
+    for i in range(4):
+        t = np.zeros(4)
+        t[i] = 1
+        t = t.reshape(2,2)
+        total += np.kron(m_map(t), t)
+    return total
 
 
 def mk_ladder(n_qubits, all_same = True):
