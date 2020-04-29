@@ -100,6 +100,15 @@ def transfer_matrix(u):
 
     return np.array(transfer)
 
+def np_to_kraus(U):
+    from scipy.linalg import eig
+    from qutip.superoperator import vec2mat
+
+    vals, vecs = eig(U)
+    vecs = [np.array(_) for _ in zip(*vecs)]
+    return [np.sqrt(val)*vec2mat(vec) for val, vec in zip(vals, vecs)]
+
+
 def matrix_to_choi(u):
     """
     Map a 2x2 matrix O to 
@@ -123,7 +132,7 @@ def matrix_to_choi(u):
     return total
 
 
-def mk_ladder(n_qubits, all_same = True):
+def mk_ladder(n_qubits, all_same = True, force_gate = None):
     """
     Args:
         n_qubits(int): Number of qubits
@@ -132,8 +141,11 @@ def mk_ladder(n_qubits, all_same = True):
     Returns:
         List: A list of random gates in a ladder-like form.
     """
-    if all_same:
-        gate = random_unitary_gate(2)
+    if all_same or (force_gate is not None):
+        if force_gate is None:
+            gate = random_unitary_gate(2)
+        else:
+            gate = force_gate
         tm = transfer_matrix(gate)
         ev, junk = la.eig(tm)
         ev_abs = abs(ev)
@@ -162,7 +174,7 @@ def invert_circuit(circuit):
     return circuit_inv
 
 
-def sample_ladder(n_qubits, all_same = True):
+def sample_ladder(n_qubits, all_same = True, force_gate = None):
     """
     Generate a random instance of a ladder-like circuit plus
     the rewinding protocol.
@@ -176,7 +188,7 @@ def sample_ladder(n_qubits, all_same = True):
         total_circuit(List): A ladder-like circuit concatenated
                              with its rewinding.
     """
-    circuit, c_length = mk_ladder(n_qubits, all_same = all_same)
+    circuit, c_length = mk_ladder(n_qubits, all_same = all_same, force_gate = force_gate)
     rev_circuit = invert_circuit(circuit[:-1])
     total_circuit = circuit + rev_circuit
     return total_circuit, c_length
@@ -402,7 +414,7 @@ def sample_all_qubits(n_qubits):
     m = compute_mps(n_qubits, circuit)
     return get_all_probabilities(m)
 
-def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = None, times = None):
+def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = None, times = None, force_gate = None):
     
     #samples the ladder, computes the MPS, 
     #and gets all the probabilities, but faster. 
@@ -411,7 +423,7 @@ def sample_all_qubits_faster(n_qubits, all_same = True, depolarizing_noise = Non
     
     # ps.mean(axis=0)
     
-    circuit, c_length = sample_ladder(n_qubits, all_same = all_same)
+    circuit, c_length = sample_ladder(n_qubits, all_same = all_same, force_gate = force_gate)
     ps = []
     for _ in range(times):
         m = compute_mps(n_qubits, circuit, p_noise = depolarizing_noise)
