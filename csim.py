@@ -161,10 +161,13 @@ def mk_ladder(n_qubits, all_same = True, force_gate = None, last_different=False
         lambda1 = ev_abs[-2]
         c_length = -(1/np.log(lambda1))
         # print(c_length)
-        if last_different:
-            final_gate = random_unitary_gate(2)
+        if type(last_different) == bool:
+            if last_different == True:
+                final_gate = random_unitary_gate(2)
+            elif last_different == False:
+                final_gate = gate
         else:
-            final_gate = gate
+            final_gate = last_different
         return ([([i, i + 1], gate) for i in range(n_qubits - 2)] + [([n_qubits - 2, n_qubits - 1], final_gate)]), c_length
     else:
         return [([i, i + 1], random_unitary_gate(2)) for i in range(n_qubits - 1)], 0
