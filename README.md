@@ -1,8 +1,1 @@
-# cooling
-Efficient simulation for algorithmic cooling
-
-# TODOS
-
-1. MPS implementation
-2. MPS Update implementation
-3. Simulation
+Code used in https://arxiv.org/abs/2012.01676
